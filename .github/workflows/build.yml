@@ -1,78 +1,45 @@
-name: Build
+name: Build and Release
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  build-linux:
-    name: Build Linux
+  build-and-release:
+    name: Build and Release
     runs-on: ubuntu-latest
+
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.19
-
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Get dependencies
-        run: go get -v -t -d ./...
+          go-version: 1.16
 
       - name: Build
-        run: GOOS=linux GOARCH=amd64 go build -o=wp-checker-linux-amd64
+        run: go build -o wp-checker
 
-      - name: Archive production artifacts 
-        uses: actions/upload-artifact@v2
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: binary-linux
-          path: ./wp-checker-linux-amd64
+          tag_name: v1.0.0
+          release_name: Release v1.0.0
+          draft: false
+          prerelease: false
 
-  build-macos:
-    name: Build macOS
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Go
-        uses: actions/setup-go@v2
+      - name: Upload Executable
+        id: upload_executable
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          go-version: 1.20
-
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Get dependencies
-        run: go get -v -t -d ./...
-
-      - name: Build
-        run: GOOS=darwin GOARCH=amd64 go build -o=wp-checker-darwin-amd64
-
-      - name: Archive production artifacts 
-        uses: actions/upload-artifact@v2
-        with:
-          name: binary-macos
-          path: ./wp-checker-darwin-amd64
-
-  build-windows:
-    name: Build Windows
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.20
-
-      - name: Check out code
-        uses: actions/checkout@v2
-
-      - name: Get dependencies
-        run: go get -v -t -d ./...
-
-      - name: Build
-        run: GOOS=windows GOARCH=amd64 go build -o=wp-checker-windows-amd64.exe
-
-      - name: Archive production artifacts 
-        uses: actions/upload-artifact@v2
-        with:
-          name: binary-windows
-          path: ./wp-checker-windows-amd64.exe
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./wp-checker
+          asset_name: wp-checker
+          asset_content_type: application/octet-stream
