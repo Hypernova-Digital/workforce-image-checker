@@ -107,11 +107,15 @@ func main() {
 			modified := removeBrokenImages(doc, u)
 			newHtml := renderNode(modified)
 
-			if !dryRun {
-				fmt.Printf("Updating post %v\n", int(post["id"].(float64)))
-				err = updatePost(int(post["id"].(float64)), newHtml)
-				if err != nil {
-					fmt.Printf("Failed to update post: %v\n", err)
+			if brokenCount > 0 {
+				if !dryRun {
+					fmt.Printf("Updating post %v\n", int(post["id"].(float64)))
+					err = updatePost(int(post["id"].(float64)), newHtml)
+					if err != nil {
+						fmt.Printf("Failed to update post: %v\n", err)
+					}
+				} else {
+					fmt.Println("Dry run mode: Post update skipped")
 				}
 			}
 		}
@@ -162,19 +166,28 @@ func renderNode(n *html.Node) string {
 
 // updatePost sends a request to the WP REST API to update the post content with the new HTML.
 func updatePost(postID int, newHtml string) error {
-	reqBody := fmt.Sprintf(`{"content": "%s"}`, newHtml)
+	reqBody := struct {
+		Content string `json:"content"`
+	}{
+		Content: newHtml,
+	}
 
-	// Then inside the updatePost function, use baseUpdateURL
-	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s%d", baseUpdateURL, postID), strings.NewReader(reqBody))
+	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return err
 	}
+
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s%d", baseUpdateURL, postID), bytes.NewReader(jsonData))
+	if err != nil {
+		return err
+	}
+
 	auth := username + ":" + password
 	encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
 	req.Header.Add("Authorization", "Basic "+encodedAuth)
-
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
