@@ -24,6 +24,8 @@ var (
 	brokenCount int
 )
 
+var baseUpdateURL string
+
 func init() {
 	flag.StringVar(&baseURL, "url", "", "URL of the WordPress site")
 	flag.StringVar(&username, "user", "", "Username for Basic Auth")
@@ -50,6 +52,7 @@ func main() {
 	}
 
 	baseURL = u.String() + "wp-json/wp/v2/posts?per_page=100&page="
+	baseUpdateURL = u.String() + "wp-json/wp/v2/posts/"
 
 	for {
 		fmt.Printf("Fetching page %d\n", page)
@@ -99,13 +102,14 @@ func main() {
 				continue
 			}
 
-			fmt.Printf("Checking post %v for broken images\n", post["id"])
+			fmt.Printf("Checking post %v for broken images\n", int(post["id"].(float64)))
+
 			modified := removeBrokenImages(doc, u)
 			newHtml := renderNode(modified)
 
 			if !dryRun {
-				fmt.Printf("Updating post %v\n", post["id"])
-				err = updatePost(post["id"].(int), newHtml)
+				fmt.Printf("Updating post %v\n", int(post["id"].(float64)))
+				err = updatePost(int(post["id"].(float64)), newHtml)
 				if err != nil {
 					fmt.Printf("Failed to update post: %v\n", err)
 				}
@@ -159,14 +163,18 @@ func renderNode(n *html.Node) string {
 // updatePost sends a request to the WP REST API to update the post content with the new HTML.
 func updatePost(postID int, newHtml string) error {
 	reqBody := fmt.Sprintf(`{"content": "%s"}`, newHtml)
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s%d", baseURL, postID), strings.NewReader(reqBody))
+
+	// Then inside the updatePost function, use baseUpdateURL
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s%d", baseUpdateURL, postID), strings.NewReader(reqBody))
 	if err != nil {
 		return err
 	}
+	auth := username + ":" + password
+	encodedAuth := base64.StdEncoding.EncodeToString([]byte(auth))
+	req.Header.Add("Authorization", "Basic "+encodedAuth)
 
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(username+":"+password)))
-
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
