@@ -1,6 +1,5 @@
 const axios = require('axios');
 const yargs = require('yargs/yargs');
-const cheerio = require('cheerio');
 const btoa = require('btoa');
 const { hideBin } = require('yargs/helpers');
 const sleep = require('util').promisify(setTimeout);
@@ -17,51 +16,57 @@ let fixedImageCount = 0;
 let workingImageCount = 0;
 
 async function checkImage(url) {
-  try {
-    const response = await axios.head(url, { maxRedirects: 0 });
-    if (response.status === 200) {
-      workingImageCount++;
-      console.log(`Working image found: ${url}`);
-      return true;
-    }
-  } catch (error) {
-    if (error.response && error.response.status === 301) {
-      console.log(`Image with redirect found: ${url}`);
-      return false;
-    } else {
-      const urlIncludesOldDomain = url.includes('www.workforce.com') || url.includes('admin.workforce.com') || url.includes('workforce.com');
-      if (urlIncludesOldDomain) {
-        let newUrl = url;
-        newUrl = newUrl.replace('www.workforce.com', 'news.workforce.com');
-        newUrl = newUrl.replace('admin.workforce.com', 'news.workforce.com');
-        newUrl = newUrl.replace(/(?<!www.|news.)workforce.com/g, 'news.workforce.com');
+  // If the URL is a relative URL, prepend the new domain
+  if (url.startsWith('/')) {
+    url = `https://stgnews.workforce.com${url}`;
+  }
 
-        console.log(`Attempting to fix broken URL: ${url} to ${newUrl}`);
-        try {
-          const fixResponse = await axios.head(newUrl, { maxRedirects: 0 });
-          if (fixResponse.status === 200) {
-            fixedImageCount++;
-            console.log(`Fixed broken URL: ${url} to ${newUrl}`);
-            return newUrl;
-          } else {
-            brokenImageCount++;
-            console.log(`Broken image found: ${newUrl}. Reason: Fix attempt failed`);
-            return false;
-          }
-        } catch (fixError) {
-          brokenImageCount++;
-          console.log(`Broken image found: ${newUrl}. Reason: ${fixError.message}`);
-          return false;
-        }
-      } else {
-        brokenImageCount++;
-        console.log(`Broken image found: ${url}. Reason: ${error.message}`);
-        return false;
+  // Variable that checks if the URL includes the old domain
+  let urlIncludesOldDomain = url.includes('www.workforce.com') || url.includes('admin.workforce.com') || url.includes('workforce.com');
+
+  // If the URL includes the old domain, a new URL is generated
+  if (urlIncludesOldDomain) {
+    let newUrl = url;
+    newUrl = newUrl.replace('www.workforce.com', 'stgnews.workforce.com');
+    newUrl = newUrl.replace('admin.workforce.com', 'stgnews.workforce.com');
+    newUrl = newUrl.replace(/(?<!www.|stgnews.)workforce.com/g, 'stgnews.workforce.com');
+
+    try {
+      const response = await axios.head(newUrl, { maxRedirects: 0 });
+      
+      // If the request is successful and the new URL is different, the URL is fixed and logged
+      if (response.status === 200 && newUrl !== url) {
+        fixedImageCount++;
+        console.log(`Fixed broken URL: ${url} to ${newUrl}`);
+        return newUrl;
+      } else if (response.status === 200) {
+        workingImageCount++;
+        console.log(`Working image found: ${newUrl}`);
+        return newUrl;
       }
+    } catch (error) {
+      console.log(`Broken image found: ${newUrl}. Reason: ${error.message}`);
+      brokenImageCount++;
+      return false;
+    }
+  } else {
+    // If the URL does not include the old domain, we make a HEAD request to the original URL
+    try {
+      const response = await axios.head(url, { maxRedirects: 0 });
+
+      // If the request is successful, the URL is working and logged
+      if (response.status === 200) {
+        workingImageCount++;
+        console.log(`Working image found: ${url}`);
+        return url;
+      }
+    } catch (error) {
+      console.log(`Broken image found: ${url}. Reason: ${error.message}`);
+      brokenImageCount++;
+      return false;
     }
   }
 }
-
 
 
 async function processSinglePost(postId) {
